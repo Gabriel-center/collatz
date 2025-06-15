@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collatz Conjecture Visualizer</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --text-color: #e0e0e0;
+            --accent-color: #ff69b4;
+            --even-color: #61dafb;
+            --odd-color: #ff7f7f;
+            --one-color: #70e0a0;
+            --border-color: #3f3f6e;
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            --animation-speed: 0.7s;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 700px;
+            background-color: #2a2a4e;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--accent-color);
+            margin-bottom: 25px;
+            font-size: 2em;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 25px;
+            align-items: center;
+        }
+
+        .input-group {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-group label {
+            margin-bottom: 5px;
+            font-size: 0.9em;
+            color: var(--text-color);
+        }
+
+        .input-group input[type="number"] {
+            padding: 12px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-size: 1em;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input[type="number"]:focus {
+            border-color: var(--accent-color);
+        }
+        
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+          -webkit-appearance: none; 
+          margin: 0; 
+        }
+        input[type=number] {
+          -moz-appearance: textfield;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            background-color: var(--accent-color);
+            color: white;
+            font-size: 1em;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s, opacity 0.3s;
+            display: inline-flex; /* For aligning icon and text if used */
+            align-items: center;
+            justify-content: center;
+        }
+
+        button:hover {
+            background-color: #e05aaa;
+        }
+        
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        
+        #followButton {
+            background-color: #4a4a7e; /* A different color */
+            min-width: 45px; /* Ensure it's wide enough for just an icon too */
+        }
+        #followButton:hover {
+            background-color: #5a5a9e;
+        }
+        #followButton.hidden {
+            display: none; /* Or opacity: 0; pointer-events: none; for smoother transition */
+        }
+
+        .output-area-wrapper {
+            position: relative; /* For positioning the follow button */
+        }
+
+        .output-area {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            background-color: var(--bg-color);
+            scroll-behavior: smooth;
+        }
+
+        .output-area.hide-text .step-explanation {
+            display: none;
+        }
+
+        .step {
+            display: flex;
+            align-items: baseline;
+            gap: 15px;
+            padding: 12px 0;
+            border-bottom: 1px dashed #3a3a5e;
+            animation: fadeIn var(--animation-speed) ease-out;
+            opacity: 0;
+            animation-fill-mode: forwards;
+        }
+
+        .step:last-child {
+            border-bottom: none;
+        }
+
+        .step-number {
+            font-size: 1.8em;
+            font-weight: bold;
+            min-width: 60px;
+            text-align: right;
+            transition: color 0.3s, transform 0.3s;
+        }
+
+        .step-explanation {
+            font-size: 0.95em;
+            color: #b0b0d0;
+            line-height: 1.5;
+        }
+
+        .even .step-number { color: var(--even-color); }
+        .odd .step-number { color: var(--odd-color); }
+        .one .step-number {
+            color: var(--one-color);
+            font-size: 2.5em;
+            transform: scale(1.1);
+        }
+        
+        .one .step-explanation {
+            font-weight: bold;
+            color: var(--one-color);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .one.step .step-number {
+            animation: popIn 0.5s ease-out forwards, fadeIn var(--animation-speed) ease-out;
+        }
+        
+        @keyframes popIn {
+            0% { transform: scale(0.8); }
+            70% { transform: scale(1.25); }
+            100% { transform: scale(1.1); }
+        }
+
+        .error-message {
+            color: var(--odd-color);
+            text-align: center;
+            margin-top: 10px;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Collatz Conjecture</h1>
+        <div class="controls">
+            <div class="input-group">
+                <label for="numberInput">Enter a positive integer:</label>
+                <input type="number" id="numberInput" value="6" min="1">
+            </div>
+            <div class="button-group">
+                <button id="startButton">Start</button>
+                <button id="pauseButton" disabled>Pause</button>
+                <button id="toggleTextButton">Hide Text</button>
+                <button id="followButton" class="hidden" title="Follow Last Number">⬇</button> 
+            </div>
+        </div>
+        <div class="output-area-wrapper">
+            <div id="outputArea" class="output-area">
+                <!-- Steps will be dynamically added here -->
+            </div>
+        </div>
+        <div id="errorMessage" class="error-message"></div>
+    </div>
+
+    <script>
+        const numberInput = document.getElementById('numberInput');
+        const startButton = document.getElementById('startButton');
+        const pauseButton = document.getElementById('pauseButton');
+        const toggleTextButton = document.getElementById('toggleTextButton');
+        const followButton = document.getElementById('followButton'); // New button
+        const outputArea = document.getElementById('outputArea');
+        const errorMessage = document.getElementById('errorMessage');
+
+        let currentNumber = 0;
+        let sequenceInterval = null;
+        let isPaused = false;
+        let userHasScrolledManually = false;
+        let iterationDelay = 700;
+        let maxIterations = 500;
+
+        function addStepToOutput(number, operationText, isEven, isOne = false) {
+            const stepDiv = document.createElement('div');
+            stepDiv.classList.add('step');
+
+            const numberSpan = document.createElement('span');
+            numberSpan.classList.add('step-number');
+            numberSpan.textContent = number;
+
+            const explanationSpan = document.createElement('span');
+            explanationSpan.classList.add('step-explanation');
+            explanationSpan.textContent = operationText;
+            
+            if (isOne) {
+                stepDiv.classList.add('one');
+                numberSpan.style.animationDelay = `${parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--animation-speed').replace('s','')) * 0.5}s`;
+            } else if (isEven) {
+                stepDiv.classList.add('even');
+            } else {
+                stepDiv.classList.add('odd');
+            }
+            
+            stepDiv.appendChild(numberSpan);
+            stepDiv.appendChild(explanationSpan);
+            outputArea.appendChild(stepDiv);
+
+            if (!userHasScrolledManually) {
+                outputArea.scrollTop = outputArea.scrollHeight;
+            }
+        }
+        
+        function runCollatzStep() {
+            if (isPaused) return;
+
+            if (currentNumber === 1) {
+                addStepToOutput(1, "Reached 1! The sequence terminates here (or enters the 4-2-1 loop).", false, true);
+                stopSequence("Reached 1.");
+                return;
+            }
+
+            if (maxIterations-- <= 0) {
+                addStepToOutput(currentNumber, "Max iterations reached. Stopping.", false);
+                stopSequence("Max iterations reached.");
+                errorMessage.textContent = "Sequence too long, stopped.";
+                return;
+            }
+
+            let operationText = "";
+            let originalNumber = currentNumber;
+            let isEven = false;
+
+            if (currentNumber % 2 === 0) {
+                currentNumber /= 2;
+                isEven = true;
+                operationText = `${originalNumber} is even. Operation: ${originalNumber} / 2 = ${currentNumber}`;
+            } else {
+                currentNumber = 3 * currentNumber + 1;
+                isEven = false;
+                operationText = `${originalNumber} is odd. Operation: (3 * ${originalNumber}) + 1 = ${currentNumber}`;
+            }
+            addStepToOutput(currentNumber, operationText, isEven);
+        }
+
+        function startSequence() {
+            const startVal = parseInt(numberInput.value);
+            if (isNaN(startVal) || startVal <= 0) {
+                errorMessage.textContent = "Please enter a positive integer.";
+                return;
+            }
+            
+            errorMessage.textContent = "";
+            outputArea.innerHTML = '';
+            userHasScrolledManually = false; 
+            maxIterations = 500;
+            followButton.classList.add('hidden'); // Hide follow button on new start
+
+            currentNumber = startVal;
+            addStepToOutput(currentNumber, `Starting with ${currentNumber}.`, currentNumber % 2 === 0);
+
+            if (currentNumber === 1) {
+                 addStepToOutput(1, "Reached 1! The sequence terminates here (or enters the 4-2-1 loop).", false, true);
+                 stopSequence("Reached 1.");
+                 return;
+            }
+
+            isPaused = false;
+            startButton.disabled = true;
+            pauseButton.disabled = false;
+            pauseButton.textContent = "Pause";
+            numberInput.disabled = true;
+
+            if (sequenceInterval) clearInterval(sequenceInterval);
+            sequenceInterval = setInterval(runCollatzStep, iterationDelay);
+        }
+
+        function stopSequence(reason) {
+            if (sequenceInterval) clearInterval(sequenceInterval);
+            sequenceInterval = null;
+            startButton.disabled = false;
+            pauseButton.disabled = true;
+            pauseButton.textContent = "Pause";
+            numberInput.disabled = false;
+            // Don't hide follow button here, user might still want to scroll
+            console.log("Sequence stopped:", reason);
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            if (isPaused) {
+                pauseButton.textContent = "Resume";
+                if(sequenceInterval) clearInterval(sequenceInterval);
+            } else {
+                pauseButton.textContent = "Pause";
+                 if (currentNumber !== 1 && maxIterations > 0) {
+                    sequenceInterval = setInterval(runCollatzStep, iterationDelay);
+                }
+            }
+        }
+        
+        function toggleTextVisibility() {
+            outputArea.classList.toggle('hide-text');
+            if (outputArea.classList.contains('hide-text')) {
+                toggleTextButton.textContent = "Show Text";
+            } else {
+                toggleTextButton.textContent = "Hide Text";
+            }
+        }
+        
+        function enableAutoScroll() {
+            userHasScrolledManually = false;
+            followButton.classList.add('hidden'); // Hide it again as auto-scroll is active
+            outputArea.scrollTop = outputArea.scrollHeight; // Scroll to bottom immediately
+        }
+
+        // Event Listeners
+        startButton.addEventListener('click', startSequence);
+        pauseButton.addEventListener('click', togglePause);
+        toggleTextButton.addEventListener('click', toggleTextVisibility);
+        followButton.addEventListener('click', enableAutoScroll); // New listener
+
+        outputArea.addEventListener('scroll', () => {
+            const threshold = 30; 
+            // Check if scrollbar exists and is not at the bottom
+            const isScrolledUp = outputArea.scrollHeight > outputArea.clientHeight &&
+                                 outputArea.scrollTop + outputArea.clientHeight < outputArea.scrollHeight - threshold;
+
+            if (isScrolledUp) {
+                if (!userHasScrolledManually) { // Only change state if it wasn't manual already
+                    userHasScrolledManually = true;
+                    followButton.classList.remove('hidden'); // Show follow button
+                }
+            } else {
+                // If user scrolls back to bottom (or very close), auto-scroll can resume
+                // This part makes it re-engage auto-scroll if user scrolls to bottom themselves.
+                // If you want the "follow" button to be the *only* way to re-enable, remove this 'else' block
+                if (userHasScrolledManually && outputArea.scrollTop + outputArea.clientHeight >= outputArea.scrollHeight - threshold/2) {
+                     userHasScrolledManually = false;
+                     followButton.classList.add('hidden');
+                }
+            }
+        });
+        
+        numberInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                startButton.click();
+            }
+        });
+
+    </script>
+</body>
+</html>
