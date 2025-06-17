@@ -14,7 +14,9 @@
             --one-color: #70e0a0;
             --border-color: #3f3f6e;
             --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            --animation-speed: 0.7s;
+            --animation-speed: 0.7s; /* Default for normal mode */
+            --fast-animation-speed: 0.05s; /* For fast mode steps */
+            --known-color: #ffffff; /* White for known numbers in sequence */
         }
 
         body {
@@ -107,7 +109,7 @@
             font-size: 1em;
             cursor: pointer;
             transition: background-color 0.3s, transform 0.1s, opacity 0.3s;
-            display: inline-flex; /* For aligning icon and text if used */
+            display: inline-flex;
             align-items: center;
             justify-content: center;
         }
@@ -127,18 +129,18 @@
         }
         
         #followButton {
-            background-color: #4a4a7e; /* A different color */
-            min-width: 45px; /* Ensure it's wide enough for just an icon too */
+            background-color: #4a4a7e;
+            min-width: 45px;
         }
         #followButton:hover {
             background-color: #5a5a9e;
         }
         #followButton.hidden {
-            display: none; /* Or opacity: 0; pointer-events: none; for smoother transition */
+            display: none;
         }
 
         .output-area-wrapper {
-            position: relative; /* For positioning the follow button */
+            position: relative;
         }
 
         .output-area {
@@ -161,7 +163,7 @@
             gap: 15px;
             padding: 12px 0;
             border-bottom: 1px dashed #3a3a5e;
-            animation: fadeIn var(--animation-speed) ease-out;
+            animation: fadeIn var(--animation-speed) ease-out; /* Default, JS might override */
             opacity: 0;
             animation-fill-mode: forwards;
         }
@@ -186,6 +188,12 @@
 
         .even .step-number { color: var(--even-color); }
         .odd .step-number { color: var(--odd-color); }
+        
+        /* Style for step numbers that are known (but not '1') */
+        .step.known:not(.one) .step-number {
+            color: var(--known-color);
+        }
+
         .one .step-number {
             color: var(--one-color);
             font-size: 2.5em;
@@ -209,7 +217,7 @@
         }
         
         .one.step .step-number {
-            animation: popIn 0.5s ease-out forwards, fadeIn var(--animation-speed) ease-out;
+            animation: popIn 0.5s ease-out forwards, fadeIn var(--animation-speed) ease-out; /* Default, JS might override fadeIn part */
         }
         
         @keyframes popIn {
@@ -224,6 +232,38 @@
             margin-top: 10px;
         }
 
+        /* Styles for the Known Numbers display area */
+        #knownNumbersHeader {
+            text-align: center;
+            color: var(--accent-color);
+            margin-top: 30px;
+            display: none; /* Initially hidden */
+        }
+
+        #knownNumbersDisplayArea {
+            margin-top: 10px;
+            text-align: center;
+            max-width: 700px;
+            word-wrap: break-word; /* Prevent long lines from breaking layout */
+            line-height: 1.8; /* Better spacing for clickable numbers */
+        }
+
+        #knownNumbersDisplayArea span.known-clickable {
+            cursor: pointer;
+            color: var(--even-color); /* Use a distinct color for known numbers list */
+            margin: 0 4px; /* Spacing around each number */
+            padding: 3px 6px;
+            border-radius: 4px;
+            transition: background-color 0.2s, color 0.2s;
+            display: inline-block; /* Allows margin/padding to work better */
+            border: 1px solid var(--border-color);
+        }
+        #knownNumbersDisplayArea span.known-clickable:hover {
+            background-color: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
     </style>
 </head>
 <body>
@@ -236,6 +276,7 @@
             </div>
             <div class="button-group">
                 <button id="startButton">Start</button>
+                <button id="startFastButton">Start Fast</button>
                 <button id="pauseButton" disabled>Pause</button>
                 <button id="toggleTextButton">Hide Text</button>
                 <button id="followButton" class="hidden" title="Follow Last Number">⬇</button> 
@@ -247,25 +288,55 @@
             </div>
         </div>
         <div id="errorMessage" class="error-message"></div>
+
+        <h2 id="knownNumbersHeader">Known Numbers (Session)</h2>
+        <div id="knownNumbersDisplayArea">
+            <!-- Clickable known numbers will be displayed here -->
+        </div>
     </div>
 
     <script>
         const numberInput = document.getElementById('numberInput');
         const startButton = document.getElementById('startButton');
+        const startFastButton = document.getElementById('startFastButton');
         const pauseButton = document.getElementById('pauseButton');
         const toggleTextButton = document.getElementById('toggleTextButton');
-        const followButton = document.getElementById('followButton'); // New button
+        const followButton = document.getElementById('followButton');
         const outputArea = document.getElementById('outputArea');
         const errorMessage = document.getElementById('errorMessage');
+        const knownNumbersHeader = document.getElementById('knownNumbersHeader');
+        const knownNumbersDisplayArea = document.getElementById('knownNumbersDisplayArea');
 
         let currentNumber = 0;
         let sequenceInterval = null;
         let isPaused = false;
         let userHasScrolledManually = false;
-        let iterationDelay = 700;
-        let maxIterations = 500;
+        let defaultIterationDelay = 700; // For normal mode setInterval
+        let maxIterations = 1000;
 
-        function addStepToOutput(number, operationText, isEven, isOne = false) {
+        let isFastModeActive = false;
+        let currentPathNumbers = [];
+        const knownNumbersThatReachOne = new Set();
+
+        function performCollatzStep(num) {
+            let originalNum = num;
+            let nextNum;
+            let isEvenOp; // True if the operation was division by 2
+            let operationTextDetail;
+
+            if (num % 2 === 0) {
+                nextNum = num / 2;
+                isEvenOp = true;
+                operationTextDetail = `${originalNum} / 2 = ${nextNum}`;
+            } else {
+                nextNum = 3 * num + 1;
+                isEvenOp = false;
+                operationTextDetail = `(3 * ${originalNum}) + 1 = ${nextNum}`;
+            }
+            return { nextNum, isEvenOp, operationTextDetail, originalNum };
+        }
+
+        function addStepToOutput(number, operationText, originalIsEven, isOne = false) {
             const stepDiv = document.createElement('div');
             stepDiv.classList.add('step');
 
@@ -277,148 +348,243 @@
             explanationSpan.classList.add('step-explanation');
             explanationSpan.textContent = operationText;
             
+            const animSpeedProperty = isFastModeActive ? '--fast-animation-speed' : '--animation-speed';
+            const currentAnimSpeedValue = getComputedStyle(document.documentElement).getPropertyValue(animSpeedProperty);
+            stepDiv.style.animationDuration = currentAnimSpeedValue;
+
             if (isOne) {
                 stepDiv.classList.add('one');
-                numberSpan.style.animationDelay = `${parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--animation-speed').replace('s','')) * 0.5}s`;
-            } else if (isEven) {
-                stepDiv.classList.add('even');
+                numberSpan.style.animationDelay = `${parseFloat(currentAnimSpeedValue.replace('s','')) * 0.5}s`;
             } else {
-                stepDiv.classList.add('odd');
+                if (knownNumbersThatReachOne.has(number)) {
+                    stepDiv.classList.add('known');
+                }
+                if (originalIsEven) { // Color based on the parity of the number *before* the operation
+                    stepDiv.classList.add('even');
+                } else {
+                    stepDiv.classList.add('odd');
+                }
             }
             
             stepDiv.appendChild(numberSpan);
             stepDiv.appendChild(explanationSpan);
             outputArea.appendChild(stepDiv);
 
-            if (!userHasScrolledManually) {
+            if (!userHasScrolledManually && !isFastModeActive) {
                 outputArea.scrollTop = outputArea.scrollHeight;
+            } else if (isFastModeActive && number === 1) { // Scroll to end once fast mode completes
+                 outputArea.scrollTop = outputArea.scrollHeight;
             }
         }
+
+        function finalizeSequence(reason) {
+            if (currentNumber === 1) { // Only add to known if it actually reached 1
+                currentPathNumbers.forEach(num => knownNumbersThatReachOne.add(num));
+                updateKnownNumbersDisplay();
+            }
+            
+            isFastModeActive = false;
+            // No need to reset documentElement style for --animation-speed, CSS handles it via variable.
+
+            updateButtonStates();
+            numberInput.disabled = false;
+            console.log("Sequence ended:", reason);
+        }
         
-        function runCollatzStep() {
+        function updateKnownNumbersDisplay() {
+            if (knownNumbersThatReachOne.size === 0) {
+                knownNumbersHeader.style.display = 'none';
+                knownNumbersDisplayArea.innerHTML = '';
+                return;
+            }
+
+            knownNumbersHeader.style.display = 'block';
+            knownNumbersDisplayArea.innerHTML = '';
+            const sortedKnownNumbers = Array.from(knownNumbersThatReachOne).sort((a, b) => a - b);
+            
+            sortedKnownNumbers.forEach(num => {
+                const numSpan = document.createElement('span');
+                numSpan.classList.add('known-clickable');
+                numSpan.textContent = num;
+                numSpan.title = `Start sequence with ${num}`;
+                numSpan.addEventListener('click', () => {
+                    numberInput.value = num;
+                    // Automatically start if no sequence is running
+                    if (!startButton.disabled || !startFastButton.disabled) {
+                        startSequenceManager(false); // Default to normal start
+                    }
+                });
+                knownNumbersDisplayArea.appendChild(numSpan);
+            });
+        }
+
+        function runCollatzStepAnimated() {
             if (isPaused) return;
 
+            // This check should ideally be before adding to currentPathNumbers if we
+            // don't want the number that *causes* max iterations to be in the path.
+            // But for simplicity in knownNumbers, we add it first.
+            currentPathNumbers.push(currentNumber);
+
             if (currentNumber === 1) {
-                addStepToOutput(1, "Reached 1! The sequence terminates here (or enters the 4-2-1 loop).", false, true);
-                stopSequence("Reached 1.");
+                addStepToOutput(1, "Reached 1! Sequence complete.", false, true); // originalIsEven for '1' is arbitrary
+                finalizeSequence("Reached 1 (animated).");
                 return;
             }
 
             if (maxIterations-- <= 0) {
-                addStepToOutput(currentNumber, "Max iterations reached. Stopping.", false);
-                stopSequence("Max iterations reached.");
+                addStepToOutput(currentNumber, "Max iterations reached. Stopping.", currentNumber % 2 === 0);
+                finalizeSequence("Max iterations reached (animated).");
                 errorMessage.textContent = "Sequence too long, stopped.";
                 return;
             }
-
-            let operationText = "";
-            let originalNumber = currentNumber;
-            let isEven = false;
-
-            if (currentNumber % 2 === 0) {
-                currentNumber /= 2;
-                isEven = true;
-                operationText = `${originalNumber} is even. Operation: ${originalNumber} / 2 = ${currentNumber}`;
-            } else {
-                currentNumber = 3 * currentNumber + 1;
-                isEven = false;
-                operationText = `${originalNumber} is odd. Operation: (3 * ${originalNumber}) + 1 = ${currentNumber}`;
-            }
-            addStepToOutput(currentNumber, operationText, isEven);
+            
+            const { nextNum, operationTextDetail, originalNum } = performCollatzStep(currentNumber);
+            let explanation = `${originalNum} is ${originalNum % 2 === 0 ? 'even' : 'odd'}. Operation: ${operationTextDetail}`;
+            
+            addStepToOutput(nextNum, explanation, originalNum % 2 === 0, nextNum === 1);
+            currentNumber = nextNum;
         }
 
-        function startSequence() {
+        function runCollatzSequenceFast() {
+            isFastModeActive = true;
+            // CSS variable for --fast-animation-speed is used directly by addStepToOutput
+
+            while (currentNumber !== 1 && maxIterations > 0) {
+                currentPathNumbers.push(currentNumber);
+                const { nextNum, operationTextDetail, originalNum } = performCollatzStep(currentNumber);
+                let explanation = `${originalNum} is ${originalNum % 2 === 0 ? 'even' : 'odd'}. Operation: ${operationTextDetail}`;
+                
+                addStepToOutput(nextNum, explanation, originalNum % 2 === 0, nextNum === 1);
+                currentNumber = nextNum; // Update currentNumber *after* using originalNum for explanation
+                maxIterations--;
+            }
+            
+            if (currentNumber === 1 && !currentPathNumbers.includes(1)) {
+                 currentPathNumbers.push(1); // Ensure 1 is in path if reached this way
+            }
+
+            if (currentNumber === 1) {
+                finalizeSequence("Reached 1 (fast).");
+            } else if (maxIterations <= 0) {
+                 addStepToOutput(currentNumber, "Max iterations reached. Stopping.", currentNumber % 2 === 0);
+                 finalizeSequence("Max iterations reached (fast).");
+                 errorMessage.textContent = "Sequence too long, stopped.";
+            }
+             outputArea.scrollTop = outputArea.scrollHeight; // Scroll to end after fast mode.
+        }
+        
+        function startSequenceManager(startFast) {
             const startVal = parseInt(numberInput.value);
             if (isNaN(startVal) || startVal <= 0) {
                 errorMessage.textContent = "Please enter a positive integer.";
                 return;
             }
             
+            if (startFast && sequenceInterval) { // Switch running normal sequence to fast
+                console.log("Switching to fast mode...");
+                clearInterval(sequenceInterval);
+                sequenceInterval = null;
+                isPaused = false; 
+                isFastModeActive = true; // Set fast mode flag
+                // currentNumber and currentPathNumbers are already set
+                runCollatzSequenceFast();
+                updateButtonStates();
+                return;
+            }
+
+            // --- Resetting for a new sequence (or if no switch occurred) ---
+            if (sequenceInterval) clearInterval(sequenceInterval);
+            sequenceInterval = null;
             errorMessage.textContent = "";
             outputArea.innerHTML = '';
-            userHasScrolledManually = false; 
-            maxIterations = 500;
-            followButton.classList.add('hidden'); // Hide follow button on new start
+            userHasScrolledManually = false;
+            followButton.classList.add('hidden');
+            maxIterations = 1000;
+            currentPathNumbers = [];
+            isPaused = false;
 
             currentNumber = startVal;
-            addStepToOutput(currentNumber, `Starting with ${currentNumber}.`, currentNumber % 2 === 0);
+            isFastModeActive = startFast;
+
+            // Add starting number to path and display it
+            addStepToOutput(currentNumber, `Starting with ${currentNumber}.`, currentNumber % 2 === 0, currentNumber === 1);
+             if (currentNumber !== 1) { // Only add to path if not already 1
+                currentPathNumbers.push(currentNumber);
+            }
+
 
             if (currentNumber === 1) {
-                 addStepToOutput(1, "Reached 1! The sequence terminates here (or enters the 4-2-1 loop).", false, true);
-                 stopSequence("Reached 1.");
+                 finalizeSequence("Started with 1.");
                  return;
             }
 
-            isPaused = false;
-            startButton.disabled = true;
-            pauseButton.disabled = false;
-            pauseButton.textContent = "Pause";
+            updateButtonStates();
             numberInput.disabled = true;
 
-            if (sequenceInterval) clearInterval(sequenceInterval);
-            sequenceInterval = setInterval(runCollatzStep, iterationDelay);
-        }
-
-        function stopSequence(reason) {
-            if (sequenceInterval) clearInterval(sequenceInterval);
-            sequenceInterval = null;
-            startButton.disabled = false;
-            pauseButton.disabled = true;
-            pauseButton.textContent = "Pause";
-            numberInput.disabled = false;
-            // Don't hide follow button here, user might still want to scroll
-            console.log("Sequence stopped:", reason);
+            if (isFastModeActive) {
+                runCollatzSequenceFast();
+            } else {
+                sequenceInterval = setInterval(runCollatzStepAnimated, defaultIterationDelay);
+            }
         }
 
         function togglePause() {
+            if (!sequenceInterval || isFastModeActive) return; // Can only pause interval-based normal sequence
+
             isPaused = !isPaused;
-            if (isPaused) {
-                pauseButton.textContent = "Resume";
-                if(sequenceInterval) clearInterval(sequenceInterval);
-            } else {
-                pauseButton.textContent = "Pause";
-                 if (currentNumber !== 1 && maxIterations > 0) {
-                    sequenceInterval = setInterval(runCollatzStep, iterationDelay);
-                }
-            }
+            updateButtonStates();
         }
         
         function toggleTextVisibility() {
             outputArea.classList.toggle('hide-text');
-            if (outputArea.classList.contains('hide-text')) {
-                toggleTextButton.textContent = "Show Text";
-            } else {
-                toggleTextButton.textContent = "Hide Text";
-            }
+            toggleTextButton.textContent = outputArea.classList.contains('hide-text') ? "Show Text" : "Hide Text";
         }
         
         function enableAutoScroll() {
             userHasScrolledManually = false;
-            followButton.classList.add('hidden'); // Hide it again as auto-scroll is active
-            outputArea.scrollTop = outputArea.scrollHeight; // Scroll to bottom immediately
+            followButton.classList.add('hidden');
+            outputArea.scrollTop = outputArea.scrollHeight;
         }
 
-        // Event Listeners
-        startButton.addEventListener('click', startSequence);
+        function updateButtonStates() {
+            const isRunningAnimated = sequenceInterval !== null;
+            // isFastModeActive is true during the fast loop, false otherwise
+            const isRunning = (isRunningAnimated && !isPaused) || isFastModeActive;
+
+            startButton.disabled = isRunning;
+            startFastButton.disabled = isFastModeActive; // Can't start new fast if fast is already going
+                                                       // Can switch from normal to fast, handled in startSequenceManager
+
+            pauseButton.disabled = !isRunningAnimated || isFastModeActive; // Only for animated mode
+            if (isRunningAnimated) {
+                 pauseButton.textContent = isPaused ? "Resume" : "Pause";
+            } else {
+                 pauseButton.textContent = "Pause"; // Default state when not pausable
+            }
+            
+            numberInput.disabled = isRunning;
+        }
+
+        // --- Event Listeners ---
+        startButton.addEventListener('click', () => startSequenceManager(false));
+        startFastButton.addEventListener('click', () => startSequenceManager(true));
         pauseButton.addEventListener('click', togglePause);
         toggleTextButton.addEventListener('click', toggleTextVisibility);
-        followButton.addEventListener('click', enableAutoScroll); // New listener
+        followButton.addEventListener('click', enableAutoScroll);
 
         outputArea.addEventListener('scroll', () => {
+            if (isFastModeActive) return; // Don't interfere during fast mode
             const threshold = 30; 
-            // Check if scrollbar exists and is not at the bottom
             const isScrolledUp = outputArea.scrollHeight > outputArea.clientHeight &&
                                  outputArea.scrollTop + outputArea.clientHeight < outputArea.scrollHeight - threshold;
 
             if (isScrolledUp) {
-                if (!userHasScrolledManually) { // Only change state if it wasn't manual already
+                if (!userHasScrolledManually) {
                     userHasScrolledManually = true;
-                    followButton.classList.remove('hidden'); // Show follow button
+                    if (sequenceInterval) followButton.classList.remove('hidden'); // Only show if a sequence is running
                 }
             } else {
-                // If user scrolls back to bottom (or very close), auto-scroll can resume
-                // This part makes it re-engage auto-scroll if user scrolls to bottom themselves.
-                // If you want the "follow" button to be the *only* way to re-enable, remove this 'else' block
                 if (userHasScrolledManually && outputArea.scrollTop + outputArea.clientHeight >= outputArea.scrollHeight - threshold/2) {
                      userHasScrolledManually = false;
                      followButton.classList.add('hidden');
@@ -429,10 +595,14 @@
         numberInput.addEventListener('keypress', function(event) {
             if (event.key === 'Enter') {
                 event.preventDefault();
-                startButton.click();
+                if (!startButton.disabled) startButton.click();
+                else if (!startFastButton.disabled) startFastButton.click();
             }
         });
 
+        // Initial UI state
+        updateButtonStates();
+        updateKnownNumbersDisplay();
     </script>
 </body>
 </html>
